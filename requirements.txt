@@ -1,0 +1,17 @@
+pymongo[srv]
+python-dotenv
+pydantic-settings
+fastapi
+uvicorn[standard]
+loguru
+pytest
+pymupdf
+pydantic
+tiktoken
+beautifulsoup4
+markdown
+groq
+datasets
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.9.1+cpu
+sentence-transformers
