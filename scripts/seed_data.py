@@ -1,9 +1,9 @@
 """Seed data/raw/ with a CS/tech-focused subset of English Wikipedia.
 
 Streams the HF "wikimedia/wikipedia" dataset (20231101.en), matches articles
-by CS/tech keywords in the *title* (case-insensitive substring), and writes
-each match as data/raw/wiki_{article_id}.txt. Uses the existing ingestion
-pipeline afterwards; this script only produces raw text files.
+by CS/tech keywords in the *title* (case-insensitive, word-boundary, plural-aware),
+and writes each match as data/raw/wiki_{article_id}.txt. Uses the existing
+ingestion pipeline afterwards; this script only produces raw text files.
 
 Run a dry-run:  python scripts/seed_data.py --limit 100
 Run the full seed: python scripts/seed_data.py
@@ -12,6 +12,7 @@ Run the full seed: python scripts/seed_data.py
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -24,7 +25,7 @@ from src.observability.logger import logger
 DATASET_ID = "wikimedia/wikipedia"
 DATASET_CONFIG = "20231101.en"
 
-TARGET_COUNT = 20000
+TARGET_COUNT = 5800
 MAX_SCAN = 500_000
 PROGRESS_EVERY = 1_000
 
@@ -77,8 +78,10 @@ FINAL_KEYWORDS = [keyword.lower() for keyword in CS_KEYWORDS]
 
 
 def _title_matches(title: str) -> bool:
-    lowered = title.lower()
-    return any(keyword in lowered for keyword in FINAL_KEYWORDS)
+    return any(
+        re.search(r"\b" + re.escape(keyword) + r"s?\b", title, re.IGNORECASE)
+        for keyword in FINAL_KEYWORDS
+    )
 
 
 def _write_article(article_id: str, title: str, text: str) -> None:
@@ -87,12 +90,14 @@ def _write_article(article_id: str, title: str, text: str) -> None:
 
 
 def seed(limit: int | None, max_scan: int) -> tuple[int, int]:
+    target = limit if limit is not None else TARGET_COUNT
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     logger.info(
-        "Seeding from {} config={} limit={} max_scan={}",
+        "Seeding from {} config={} limit={} target={} max_scan={}",
         DATASET_ID,
         DATASET_CONFIG,
         limit,
+        target,
         max_scan,
     )
     logger.info("Keywords used ({}): {}", len(FINAL_KEYWORDS), FINAL_KEYWORDS)
@@ -107,8 +112,8 @@ def seed(limit: int | None, max_scan: int) -> tuple[int, int]:
         if _title_matches(title) and text.strip():
             _write_article(str(row["id"]), title, text)
             matched += 1
-            if limit is not None and matched >= limit:
-                break
+        if matched >= target:
+            break
         if scanned >= max_scan:
             break
         if scanned % PROGRESS_EVERY == 0:

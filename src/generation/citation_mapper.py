@@ -8,7 +8,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_CITATION_RE = re.compile(r"\[(\d+)\]")
+_CITATION_RE = re.compile(r"[\[【](\d+)[\]】]")
 
 
 def extract_citations(answer_text: str, chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:

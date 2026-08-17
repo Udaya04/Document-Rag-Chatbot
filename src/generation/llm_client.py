@@ -8,7 +8,7 @@ from groq import Groq
 
 from src.config import settings
 
-DEFAULT_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_MODEL = "openai/gpt-oss-120b"
 
 
 class GroqAPIKeyError(ValueError):
