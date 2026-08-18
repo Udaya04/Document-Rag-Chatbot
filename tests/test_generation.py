@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import httpx
 import pytest
+
+from groq import NotFoundError, RateLimitError
 
 from src.config import settings
 from src.generation import llm_client
@@ -60,6 +63,17 @@ class TestCitationMapper:
         result = map_citations("Answer [3].", CHUNKS)
         assert result["answer"] == "Answer [3]."
         assert [c["marker"] for c in result["citations"]] == [3]
+
+    def test_line_ref_citation_corner_brackets(self) -> None:
+        citations = extract_citations("Answer 【1†L1-L3】.", CHUNKS)
+        assert [c["marker"] for c in citations] == [1]
+
+    def test_multiple_line_ref_citations_extract_separately(self) -> None:
+        citations = extract_citations("A 【1†L1-L3】 and B 【2†L9-L12】.", CHUNKS)
+        assert [c["marker"] for c in citations] == [1, 2]
+
+    def test_plain_bracket_styles_still_work(self) -> None:
+        assert [c["marker"] for c in extract_citations("X [1] Y 【3】", CHUNKS)] == [1, 3]
 
 
 class _FakeMessage:
@@ -157,6 +171,97 @@ class TestLlmClient:
         )
         with pytest.raises(GroqAPIKeyError, match="GROQ_API_KEY is not set"):
             llm_client.generate("sys", "user")
+
+
+def _make_rate_limit_error(retry_after: str | None = None) -> RateLimitError:
+    headers = {"retry-after": retry_after} if retry_after is not None else {}
+    response = httpx.Response(
+        429, request=httpx.Request("POST", "http://groq.test"), headers=headers
+    )
+    return RateLimitError("rate limited", response=response, body=None)
+
+
+class TestLlmClientRetry:
+    def test_generate_retries_rate_limit_then_succeeds(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "GROQ_API_KEY", "test-key")
+        monkeypatch.setattr(llm_client.time, "sleep", lambda _seconds: None)
+        calls: list[int] = []
+
+        class _FlakyCompletions:
+            def create(self, **kwargs: object) -> _FakeResponse:
+                calls.append(1)
+                if len(calls) < 3:
+                    raise _make_rate_limit_error("0.01")
+                return _FakeResponse()
+
+        class _FlakyChat:
+            completions = _FlakyCompletions()
+
+        class _FlakyGroq:
+            def __init__(self, **kwargs: object) -> None:
+                self.chat = _FlakyChat()
+
+        monkeypatch.setattr(llm_client, "Groq", _FlakyGroq)
+
+        result = llm_client.generate("sys", "user")
+
+        assert len(calls) == 3
+        assert result["text"] == "the generated answer"
+        assert result["usage"]["total_tokens"] == 15
+
+    def test_generate_propagates_last_rate_limit_after_max_attempts(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "GROQ_API_KEY", "test-key")
+        monkeypatch.setattr(llm_client.time, "sleep", lambda _seconds: None)
+        calls: list[int] = []
+
+        class _AlwaysLimitedCompletions:
+            def create(self, **kwargs: object) -> _FakeResponse:
+                calls.append(1)
+                raise _make_rate_limit_error(None)
+
+        class _AlwaysLimitedChat:
+            completions = _AlwaysLimitedCompletions()
+
+        class _AlwaysLimitedGroq:
+            def __init__(self, **kwargs: object) -> None:
+                self.chat = _AlwaysLimitedChat()
+
+        monkeypatch.setattr(llm_client, "Groq", _AlwaysLimitedGroq)
+
+        with pytest.raises(RateLimitError):
+            llm_client.generate("sys", "user")
+        assert len(calls) == 3
+
+    def test_generate_does_not_retry_non_rate_limit_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "GROQ_API_KEY", "test-key")
+        calls: list[int] = []
+
+        class _BrokenCompletions:
+            def create(self, **kwargs: object) -> _FakeResponse:
+                calls.append(1)
+                response = httpx.Response(
+                    404, request=httpx.Request("POST", "http://groq.test")
+                )
+                raise NotFoundError("model not found", response=response, body=None)
+
+        class _BrokenChat:
+            completions = _BrokenCompletions()
+
+        class _BrokenGroq:
+            def __init__(self, **kwargs: object) -> None:
+                self.chat = _BrokenChat()
+
+        monkeypatch.setattr(llm_client, "Groq", _BrokenGroq)
+
+        with pytest.raises(NotFoundError, match="model not found"):
+            llm_client.generate("sys", "user")
+        assert len(calls) == 1
 
 
 class TestConstrainedGenerator:

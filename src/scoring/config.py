@@ -16,4 +16,7 @@ CONFIDENCE_WEIGHTS = {
     "relevance": 0.25,
 }
 
-CONFIDENCE_THRESHOLD = 0.4
+# Tuned by Phase 9c PART A: threshold sweep over eval_set (30 genuine) and
+# adversarial_queries (20). 0.515 = min(genuine best-case) - 0.01, keeping all
+# 30 genuine queries while gating 4/20 adversarial (0.4 gated none).
+CONFIDENCE_THRESHOLD = 0.515

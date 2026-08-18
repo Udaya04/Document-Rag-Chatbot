@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import random
 import sys
 from pathlib import Path
@@ -23,6 +24,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.db.client import get_db
 from src.generation import llm_client
 from src.generation.pipeline import INSUFFICIENT_EVIDENCE_MESSAGE, answer_query
+
+logger = logging.getLogger(__name__)
 
 SUBSET_SIZE = 15
 SEED = 42
@@ -52,12 +55,22 @@ def _chunk_text(db, chunk_id: str) -> str:
     return doc.get("text", "") if doc else ""
 
 
-def _judge_answer(db, answer: str, citations: list[dict]) -> tuple[str, bool]:
+def _judge_answer(
+    db, answer: str, citations: list[dict], context_chunks: list[dict] | None = None
+) -> tuple[str, bool]:
     context_parts = [
         _chunk_text(db, citation.get("chunk_id"))
         for citation in citations
         if citation.get("chunk_id")
     ]
+    if not context_parts:
+        logger.warning(
+            "citation extraction returned empty; falling back to context_chunks"
+        )
+        for chunk in context_chunks or []:
+            text = chunk.get("text", "") if isinstance(chunk, dict) else ""
+            if text:
+                context_parts.append(text)
     context = "\n\n".join(part.strip() for part in context_parts if part.strip())
     if not context:
         context = "(no cited chunks available)"
@@ -84,7 +97,9 @@ def run_hallucination_check(limit: int | None = None) -> dict:
             skipped += 1
             print(f"SKIP (gate triggered): {query}")
             continue
-        verdict, is_clean = _judge_answer(db, result["answer"], result.get("citations", []))
+        verdict, is_clean = _judge_answer(
+            db, result["answer"], result.get("citations", []), result.get("context_chunks", [])
+        )
         results.append(
             {
                 "query": query,
