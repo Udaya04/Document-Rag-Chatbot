@@ -67,10 +67,8 @@ CS_KEYWORDS = [
     "container",
     "open source software",
     "linux",
-    "python",
     "javascript",
     "java",
-    "rust",
     "sql",
 ]
 
