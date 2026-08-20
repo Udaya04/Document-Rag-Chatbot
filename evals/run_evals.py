@@ -21,7 +21,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.generation.pipeline import INSUFFICIENT_EVIDENCE_MESSAGE, answer_query
+from src.generation.pipeline import answer_query
+from src.generation.prompt_templates import is_refusal
 
 from evals.hallucination_check import run_hallucination_check
 from evals.recall_benchmark import run_recall_benchmark
@@ -45,7 +46,7 @@ def run_gate_validation() -> dict:
     missed: list[dict] = []
     for query in queries:
         result = answer_query(query)
-        if result["answer"] == INSUFFICIENT_EVIDENCE_MESSAGE:
+        if is_refusal(result["answer"]):
             caught.append(query)
             print(f"GATE: {query}")
         else:

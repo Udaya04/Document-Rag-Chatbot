@@ -7,13 +7,12 @@ from typing import Any
 from src.caching.query_cache import get_cached_answer, set_cached_answer
 from src.generation.citation_mapper import map_citations
 from src.generation.constrained_generator import generate_answer
+from src.generation.prompt_templates import INSUFFICIENT_EVIDENCE_MESSAGE
 from src.observability.logger import logger
 from src.observability.tracer import finalize_trace, record_stage, start_trace
 from src.retrieval.hybrid import hybrid_search
 from src.retrieval.reranker import get_reranker
 from src.scoring.confidence import score_and_filter
-
-INSUFFICIENT_EVIDENCE_MESSAGE = "Insufficient evidence found to answer this question."
 
 
 def _score_snapshot(chunks: list[dict[str, Any]], score_key: str) -> list[dict[str, Any]]:

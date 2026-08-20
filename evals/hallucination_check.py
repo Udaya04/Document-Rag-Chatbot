@@ -23,7 +23,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.db.client import get_db
 from src.generation import llm_client
-from src.generation.pipeline import INSUFFICIENT_EVIDENCE_MESSAGE, answer_query
+from src.generation.pipeline import answer_query
+from src.generation.prompt_templates import is_refusal
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +94,7 @@ def run_hallucination_check(limit: int | None = None) -> dict:
     for entry in subset:
         query = entry["query"]
         result = answer_query(query)
-        if result["answer"] == INSUFFICIENT_EVIDENCE_MESSAGE:
+        if is_refusal(result["answer"]):
             skipped += 1
             print(f"SKIP (gate triggered): {query}")
             continue

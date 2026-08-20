@@ -11,9 +11,11 @@ from src.generation.citation_mapper import extract_citations, map_citations
 from src.generation.constrained_generator import generate_answer
 from src.generation.llm_client import DEFAULT_MODEL, GroqAPIKeyError
 from src.generation.prompt_templates import (
+    INSUFFICIENT_EVIDENCE_MESSAGE,
     SYSTEM_PROMPT,
     build_context_block,
     build_user_prompt,
+    is_refusal,
 )
 
 CHUNKS = [
@@ -42,6 +44,36 @@ class TestPromptTemplates:
     def test_system_prompt_instructs_grounding(self) -> None:
         assert "ONLY using the provided context" in SYSTEM_PROMPT
         assert "[" in SYSTEM_PROMPT
+
+    def test_system_prompt_embeds_exact_refusal_text(self) -> None:
+        assert INSUFFICIENT_EVIDENCE_MESSAGE in SYSTEM_PROMPT
+
+
+class TestIsRefusal:
+    def test_canonical_message_recognized(self) -> None:
+        assert is_refusal(INSUFFICIENT_EVIDENCE_MESSAGE) is True
+
+    def test_case_variant_recognized(self) -> None:
+        assert is_refusal("insufficient evidence found to answer this question.") is True
+
+    def test_whitespace_variant_recognized(self) -> None:
+        assert is_refusal("  Insufficient evidence found to answer this question.  ") is True
+
+    def test_real_answer_not_misclassified(self) -> None:
+        assert (
+            is_refusal(
+                "Functional Objects contributed its repository to the Dylan "
+                "open-source community in 2003【1】."
+            )
+            is False
+        )
+
+    def test_none_and_empty_not_misclassified(self) -> None:
+        assert is_refusal(None) is False
+        assert is_refusal("") is False
+
+    def test_old_paraphrased_phrasing_is_not_whitelisted(self) -> None:
+        assert is_refusal("The context does not contain this information.") is False
 
 
 class TestCitationMapper:
